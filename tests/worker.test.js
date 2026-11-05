@@ -47,3 +47,18 @@ test('static pages are served with noindex', async () => {
   const redirect = await worker.fetch(new Request(B), env);
   assert.equal(redirect.status, 308);
 });
+
+test('object-internal names never produce a 500 through the API', async () => {
+  for (const path of [
+    '/api/row?role=__proto__&file=mi-w43&tab=Invoices&row=1',
+    '/api/row?role=constructor&file=mi-w43&tab=Invoices&row=1',
+    '/api/state?role=toString',
+    '/api/row?role=leadership&file=mi-w43&tab=__proto__&row=1',
+    '/api/row?role=leadership&file=__proto__&tab=Invoices&row=1',
+  ]) {
+    const res = await get(path);
+    assert.ok(res.status === 400 || res.status === 404, `${path} gave ${res.status}`);
+  }
+  assert.equal((await get('/api/account/OH-999?role=leadership')).status, 404);
+  assert.equal((await get('/api/account/OH-999?role=mi-sales')).status, 403);
+});

@@ -57,6 +57,7 @@ test('after the sample file: the week closes at 1,020 boxes, +2.0%, with exact d
   assert.deepEqual(acc, { 'MI-003': 190, 'MI-007': 150, 'MI-011': 100, 'MI-014': 270, 'MI-022': 170, 'MI-031': 140 });
   assert.equal(f.accounts.reduce((a, x) => a + x.prevQty, 0), 1000);
   assert.equal(f.accounts.find((a) => a.code === 'MI-014').changePct, 8);
+  assert.equal(f.accounts.find((a) => a.code === 'MI-007').changePct, -6.3, 'rounded like Excel: -6.25 gives -6.3');
   assert.ok(mi().accounts.every((a) => a.changePct === null), 'no per-account change while the week is pending');
 });
 
@@ -183,8 +184,8 @@ test('shipped prepared answers validate on the data they were prepared for', () 
   assert.equal(validateAnswer(ANSWERS.find((a) => a.id === 'ohio-close'), oh).ok, true);
   assert.equal(validateAnswer(ANSWERS.find((a) => a.id === 'why-ready'), pending).ok, false, 'not shown before the week closes');
   const r = answerFor('leadership', 'why-ready', S);
-  assert.match(r.sentences[1].text, /1,020 boxes, \+2\.0% on the 1,000/);
-  assert.match(r.sentences[2].text, /12 boxes for MI-014/);
+  assert.match(r.sentences[1].text, /1,020 five-packs, \+2\.0% on the 1,000/);
+  assert.match(r.sentences[2].text, /12 five-packs for MI-014/);
 });
 
 test('plausible false answers are rejected by the validator', () => {
@@ -207,7 +208,7 @@ test('plausible false answers are rejected by the validator', () => {
   for (const [why, a] of bad) assert.equal(validateAnswer(a, facts).ok, false, why);
   assert.deepEqual(checkNote('Nothing was guessed: a line without a clear format waits for a person.'), []);
   // The account named in a rendered credit sentence is the one on the credit row itself.
-  assert.match(rowFor('leadership', 'mi-w44b', 'Credits', 3, S).outcome, /^Netted as -12 boxes for MI-014, matched to Ice Packs, Acapulco Gold, 2\.5g 5-Pack/);
+  assert.match(rowFor('leadership', 'mi-w44b', 'Credits', 3, S).outcome, /^Netted as -12 five-packs for MI-014, matched to Ice Packs, Acapulco Gold, 2\.5g 5-Pack/);
   assert.match(rowFor('leadership', 'mi-w44b', 'Invoices', 5, S).outcome, /^Skipped: the same line was already counted from MI_partner_weekly_2026-10-29\.xlsx, row 20/);
   assert.match(rowFor('leadership', 'mi-pos-022', 'Export', 9, S).outcome, /^Held for review/);
   const credit = facts['MI.credit.CR-1182'];
@@ -217,10 +218,70 @@ test('plausible false answers are rejected by the validator', () => {
 
 test('file coverage shows the Michigan partner workbook three days late until the sample arrives', () => {
   const before = stateFor('mi-sales', []).coverage.find((c) => c.source === 'mi-partner');
-  assert.equal(before.daysBehind, 3); assert.equal(before.status, 'late');
+  assert.equal(before.daysBehind, 3); assert.equal(before.status, 'missing'); assert.equal(before.statusText, 'Fri-Sun missing');
   const after = stateFor('mi-sales', S).coverage.find((c) => c.source === 'mi-partner');
-  assert.equal(after.daysBehind, 0);
+  assert.equal(after.daysBehind, 0); assert.equal(after.statusText, 'Coverage complete');
   assert.ok(!stateFor('mi-sales', S).coverage.some((c) => c.market === 'OH'));
   const panel = stateFor('mi-sales', S).coverage.find((c) => c.kind === 'panel');
-  assert.equal(panel.status, 'on time');
+  assert.equal(panel.status, 'complete');
+});
+
+// ---------- Cases added after the review of the finished demo ----------
+const MI_IDS = [...BASE_FILES.filter((x) => x.startsWith('mi')), 'mi-w44b'];
+const withRow = (edit) => { const f = structuredClone(FILES); edit(f['mi-w44b'].sheets.Invoices, f); return marketFigure(buildDataset(MI_IDS, f), 'MI'); };
+
+test('a rejected line of the tracked product keeps the week provisional (the earlier workbook, kept as a regression case)', () => {
+  const fig = withRow((rows) => { rows[15] = ['INV-50416', '10/31/2026', 'MI-022', 'IP ACAP GLD 5PK', '', '', 'BX']; });
+  assert.equal(fig.status, 'provisional');
+  assert.equal(fig.changePct, null);
+  assert.equal(fig.issueText, '7 days covered · 1 invoice needs a quantity');
+  assert.deepEqual(fig.issues.map((i) => [i.doc, i.row, i.issue]), [['INV-50416', 16, 'qty']]);
+  assert.ok(fig.accounts.every((a) => a.changePct === null));
+  const ds = buildDataset(MI_IDS, (() => { const f = structuredClone(FILES); f['mi-w44b'].sheets.Invoices[15][3] = 'IP ACAP GLD 5PK'; f['mi-w44b'].sheets.Invoices[15][4] = ''; return f; })());
+  assert.equal(validateAnswer(ANSWERS.find((a) => a.id === 'why-ready'), factsFor(ds, 'MI')).ok, false, 'the prepared answer is suspended');
+});
+
+test('a wrong unit or an unreadable date on the tracked product also keeps the week provisional', () => {
+  assert.equal(withRow((rows) => { rows[16][6] = 'EA'; }).status, 'provisional');
+  assert.equal(withRow((rows) => { rows[16][1] = '46327'; }).status, 'provisional');
+  assert.equal(withRow((rows) => { rows[9][3] = 'DISPLAY KIT, COUNTER'; }).status, 'ready', 'an item outside the catalog does not block');
+});
+
+test('the shipped sample workbook is reconciled: the open line is on another product, which stays provisional', () => {
+  const st = stateFor('leadership', S).markets[0];
+  assert.equal(st.focus.status, 'ready');
+  const af = st.products.find((p) => p.sku === 'ice-packs/apple-fritter/2.5g-5-pack');
+  assert.equal(af.status, 'provisional');
+  assert.equal(af.issues[0].doc, 'INV-50416');
+});
+
+test('a corrected re-send replaces the earlier line; two real identical lines on one invoice both count', () => {
+  const fixed = withRow((rows) => { rows[4][5] = '45'; });
+  assert.equal(fixed.qty, 1025);
+  assert.equal(fixed.status, 'ready');
+  const f = structuredClone(FILES); f['mi-w44b'].sheets.Invoices[4][5] = '45';
+  const rc = buildDataset(MI_IDS, f).receipts.find((r) => r.file === 'mi-w44b');
+  assert.deepEqual(rc.replaced.map((r) => [r.doc, r.from, r.to]), [['INV-50398', 40, 45]]);
+  assert.equal(rc.duplicates.length, 0);
+  const twice = withRow((rows) => { rows.splice(6, 0, [...rows[5]]); });
+  assert.equal(twice.qty, 1060, 'INV-50403 carries two lines of 40');
+});
+
+test('roles, files and tabs named after object internals are refused, never a server error', () => {
+  for (const role of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    assert.throws(() => stateFor(role, []), (e) => e instanceof HttpError && e.status === 400, role);
+    assert.throws(() => rowFor(role, 'mi-w43', 'Invoices', 1, []), (e) => e instanceof HttpError && e.status === 400, role);
+  }
+  assert.throws(() => rowFor('leadership', 'mi-w43', '__proto__', 1, []), (e) => e.status === 404);
+  assert.throws(() => rowFor('leadership', '__proto__', 'Invoices', 1, []), (e) => e.status === 404);
+  assert.throws(() => rowFor('leadership', 'constructor', 'Invoices', 1, []), (e) => e.status === 404);
+  assert.throws(() => stateFor('leadership', ['__proto__']), (e) => e.status === 400);
+});
+
+test('an unknown account is a 404 for a role that may see its market, a 403 otherwise (existence never leaks)', () => {
+  assert.throws(() => accountFor('leadership', 'OH-999', S), (e) => e.status === 404);
+  assert.throws(() => accountFor('leadership', 'MI-999', S), (e) => e.status === 404);
+  assert.throws(() => accountFor('mi-sales', 'MI-999', S), (e) => e.status === 404);
+  assert.throws(() => accountFor('mi-sales', 'OH-999', S), (e) => e.status === 403);
+  assert.throws(() => accountFor('mi-sales', 'OH-005', S), (e) => e.status === 403);
 });

@@ -51,6 +51,7 @@
       <p class="verdict-word" id="verdict-word"></p>
       <p class="verdict-status" id="verdict-status"></p>
       <p class="verdict-why" id="verdict-why"></p>
+      <div id="verdict-issues"></div>
       <div class="load">
         <button type="button" class="btn-load" id="load">Load sample partner file</button>
         <p class="load-file" id="load-file">MI_partner_weekly_2026-11-01.xlsx, Fri to Sun. <a href="files/MI_partner_weekly_2026-11-01.xlsx" download>Open it in Excel</a></p>
@@ -58,11 +59,9 @@
     </div>
   </div>
 
-  <div class="rail-wrap">
-    <div class="rail" id="rail" role="img" aria-label=""></div>
-    <div class="files-row" id="files-row" aria-label="Which file declares which days"></div>
-  </div>
+  <div class="rail-wrap" id="mi-rail" role="img" aria-label=""></div>
   <div class="receipt" id="receipt" aria-live="polite" hidden></div>
+  <div class="next" id="next"></div>
 
   <div class="below">
     <div class="accounts">
@@ -93,11 +92,11 @@
 
 <section id="coverage" class="ship" aria-labelledby="ship-h">
   <h2 id="ship-h">A second tool, shipped the same way</h2>
-  <p class="lede">File coverage lists which source files are late for the Monday review. It was written with Claude Code and reached this portal through the gate every tool goes through.</p>
+  <p class="lede">File coverage lists which source files are missing days for the Monday review. It was written with Claude Code. File coverage passed these tests before I deployed it.</p>
   <div class="tool">
     <div class="tool-head"><span class="tool-name">File coverage</span><span class="tool-for" id="tool-for"></span></div>
     <table class="cov-table">
-      <thead><tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">Covers through</th><th scope="col">Expected for Monday</th><th scope="col">Status</th></tr></thead>
+      <thead><tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">Covers through</th><th scope="col">Needed for Monday</th><th scope="col">Status</th></tr></thead>
       <tbody id="cov-rows"></tbody>
     </table>
   </div>
@@ -105,24 +104,24 @@
     <li><strong>Written with Claude Code</strong> in a public repository: <a href="https://github.com/fred1433/monday-sales-check" id="link-repo">fred1433/monday-sales-check</a>.</li>
     <li><strong>Committed</strong> as <a href="https://github.com/fred1433/monday-sales-check/commit/c4cbe2418fde637073b65be7c39ca513918889a3">c4cbe24</a>, with the pipeline, the roles and this tool.</li>
     <li><strong>Tested in GitHub Actions</strong>: 23 tests passed, including <a href="https://github.com/fred1433/monday-sales-check/blob/c4cbe2418fde637073b65be7c39ca513918889a3/tests/core.test.js#L141">the one that blocks an Ohio leak</a> for a Michigan session through the page, an answer, a row, an export or <a href="https://github.com/fred1433/monday-sales-check/blob/c4cbe2418fde637073b65be7c39ca513918889a3/tests/worker.test.js#L9">a direct request</a>. <a href="https://github.com/fred1433/monday-sales-check/actions/runs/42033427871">See the passing run</a>.</li>
-    <li><strong>Deployed</strong> from a separate machine that holds the keys. GitHub holds no secret for this site.</li>
+    <li><strong>Deployed</strong> by me, after that run passed, from a separate machine that holds the keys. The deployment does not wait on GitHub by itself, and GitHub holds no secret for this site.</li>
   </ol>
   <details class="how">
     <summary>How this would run at Rove</summary>
     <div class="how-body">
-      <p>People sign in with their Rove Google Workspace account. The portal runs on Cloud Run behind Identity-Aware Proxy, so nobody outside Workspace reaches it.</p>
-      <p>Partner workbooks and till exports land in a Cloud Storage bucket. The same pipeline you used above loads them into BigQuery, with customer fields dropped before the load.</p>
-      <p>Each role reads BigQuery views with row-level access: Michigan sales reads Michigan rows. Claude agents reach the data through an MCP tool that only reads those views.</p>
+      <p>People would sign in with their Rove Google Workspace account. The portal would run on Cloud Run behind Identity-Aware Proxy, with access granted only to the Workspace groups you authorize.</p>
+      <p>Partner workbooks and POS exports would land in a Cloud Storage bucket. The same pipeline would load them into BigQuery, with customer fields excluded before the load.</p>
+      <p>Each role would read BigQuery views with row-level access: Michigan sales would read Michigan rows. Claude agents would reach the data through an MCP tool that only reads those views.</p>
       <p>The decision to settle first is which identity runs the query. It should be the person asking, or a service account limited to that role. A shared account with every right does not become Michigan because the screen says Michigan.</p>
-      <p>Questions that change the design before a pilot: who sends each export, who may see its detail, and what each source's contract allows, including use with a model provider.</p>
-      <p>This sample proves the behavior above on fictional data, with tests. Workspace sign-in, IAM and your Google Cloud project come with the pilot. Milestones: one market's files end to end, then the portal with sign-in and roles, then the reporting agent, then the next tools.</p>
+      <p>Questions that would change the design before a pilot: who sends each export, who may see its detail, and what each source's contract allows, including use with a model provider.</p>
+      <p>In this sample, the role travels in the request because sign-in is simulated, and the button replays the sample workbook's rows through a read-only API (Replay sample workbook). The behavior above is proven on fictional data, with tests. Workspace sign-in, IAM and your Google Cloud project would come with the pilot. Milestones: one market's files end to end, then the portal with sign-in and roles, then the reporting agent, then the next tools.</p>
     </div>
   </details>
 </section>
 </main>
 
 <footer class="foot">
-  <p><strong>Public Rove catalog · Fictional accounts and sales.</strong> Product lines and formats come from rovebrand.com (home page and the Ice Packs Blunt page), read Nov 5, 2026. Every account, quantity, invoice and file here is invented, and so is the presence of a product in a given state's file. Rove lists 16 US states on <a href="https://rovebrand.com/pages/company">rovebrand.com/pages/company</a> (read Nov 5, 2026) and announced its Ontario launch on Sept. 30, 2026. This sample uses two of those states.</p>
+  <p><strong>Public Rove catalog · Fictional accounts and sales.</strong> Product lines and formats come from rovebrand.com (<a href="https://rovebrand.com/pages/icepacks">Ice Packs</a> and <a href="https://rovebrand.com/pages/ice-packs-blunt">Ice Packs Blunt</a> pages, and the home page), read Nov 5, 2026. Every account, quantity, invoice and file here is invented, and so is the presence of a product in a given state's file. Rove lists 16 US states on <a href="https://rovebrand.com/pages/company">rovebrand.com/pages/company</a> (read Nov 5, 2026) and <a href="https://www.prnewswire.com/news-releases/rove-enters-canada-with-ontario-launch-302894843.html">announced its Ontario launch</a> on Sept. 30, 2026. This sample uses two of those states.</p>
   <p>Built by Frederic de Lavenne de Choulot, The AI Pipe. The answers were prepared offline; the page makes no AI call.</p>
   <p class="cal"><a href="https://cal.theaipipe.com">Book 15 minutes to walk through it</a></p>
 </footer>

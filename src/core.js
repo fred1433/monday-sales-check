@@ -18,9 +18,9 @@ export const FOCUS_SKU = 'ice-packs/acapulco-gold/2.5g-5-pack';
 
 // Public catalog entries (rovebrand.com, read 2026-11-05). Matching uses line + strain + format, never strain alone.
 export const CATALOG = [
-  { sku: FOCUS_SKU, line: 'Ice Packs', strain: 'Acapulco Gold', format: '2.5g 5-Pack', shape: 'fivepack', units: 'boxes', uoms: ['BX', 'BOX', 'BOXES', 'BXS'] },
+  { sku: FOCUS_SKU, line: 'Ice Packs', strain: 'Acapulco Gold', format: '2.5g 5-Pack', shape: 'fivepack', units: 'five-packs', uoms: ['BX', 'BOX', 'BOXES', 'BXS'] },
   { sku: 'ice-packs-blunts/acapulco-gold/2g-blunt', line: 'Ice Packs Blunts', strain: 'Acapulco Gold', format: '2g Blunt', shape: 'blunt', units: 'blunts', uoms: ['EA', 'EACH'] },
-  { sku: 'ice-packs/apple-fritter/2.5g-5-pack', line: 'Ice Packs', strain: 'Apple Fritter', format: '2.5g 5-Pack', shape: 'fivepack', units: 'boxes', uoms: ['BX', 'BOX', 'BOXES', 'BXS'] },
+  { sku: 'ice-packs/apple-fritter/2.5g-5-pack', line: 'Ice Packs', strain: 'Apple Fritter', format: '2.5g 5-Pack', shape: 'fivepack', units: 'five-packs', uoms: ['BX', 'BOX', 'BOXES', 'BXS'] },
 ];
 const BY_SKU = Object.fromEntries(CATALOG.map((c) => [c.sku, c]));
 export const skuLabel = (sku) => { const c = BY_SKU[sku]; return `${c.line}, ${c.strain}, ${c.format}`; };
@@ -122,8 +122,9 @@ export function storeTime(local, timeZone) {
   return { instant, localDate: `${y}-${mo}-${d}` };
 }
 
+const own = (o, k) => typeof k === 'string' && Object.hasOwn(o, k);
 export function ingestFile(id, files = FILES) {
-  const f = files[id];
+  const f = own(files, id) ? files[id] : null;
   if (!f) throw new HttpError(400, 'unknown_file', 'Unknown file');
   const out = { id, name: f.name, market: f.market, kind: f.kind, source: f.source, coverage: null, records: [], rejected: [], held: [], dropped: [], rowsRead: 0, panel: null, headers: {} };
   const tabs = Object.entries(f.sheets);
@@ -146,6 +147,7 @@ export function ingestFile(id, files = FILES) {
     }
     out.headers[tab] = { row: index + 1, cells: cols.map((c) => rows[index][c]) };
     const isCredit = tab.toLowerCase().startsWith('credit');
+    const occ = new Map();
     for (let i = index + 1; i < rows.length; i++) {
       const r = rows[i];
       if (!r || !r.some((c) => String(c ?? '').trim())) continue;
@@ -155,25 +157,33 @@ export function ingestFile(id, files = FILES) {
       const item = cell('item');
       const match = matchProduct(item, cell('partnerSku'));
       const q = parseQty(cell('qty'));
+      const doc = f.kind === 'sell-through' ? cell('txn') : cell('doc');
+      const account = f.kind === 'sell-through' ? f.account : cell('account');
+      const reject = (reason, issue, date = null) => out.rejected.push({ ...at, item, doc, account, date, reason, issue, sku: match.sku || null, strain: match.strain || null, source: f.kind });
       let date; let key;
       if (f.kind === 'sell-through') {
         const t = storeTime(cell('time'), f.timezone);
-        if (t.error) { out.rejected.push({ ...at, item, reason: t.error }); continue; }
-        date = t.localDate; key = `sale|${f.account}|${cell('txn')}|${item.toUpperCase()}`;
+        if (t.error) { reject(t.error, 'time'); continue; }
+        date = t.localDate; key = `sale|${f.account}|${cell('txn')}|${item.toUpperCase()}|${q.qty}`;
       } else {
         date = parseDate(cell('date'));
-        if (!date) { out.rejected.push({ ...at, item, reason: 'Unreadable date' }); continue; }
+        if (!date) { reject('Unreadable date', 'date'); continue; }
       }
-      const doc = f.kind === 'sell-through' ? cell('txn') : cell('doc');
-      const account = f.kind === 'sell-through' ? f.account : cell('account');
-      if (match.status === 'rejected') { out.rejected.push({ ...at, item, reason: match.reason }); continue; }
-      if (q.error) { out.rejected.push({ ...at, item, reason: q.error }); continue; }
+      if (match.status === 'rejected') { reject(match.reason, 'product', date); continue; }
+      if (q.error) { reject(q.error, 'qty', date); continue; }
       if (match.status === 'held') { out.held.push({ ...at, item, doc, date, account, qty: q.qty, strain: match.strain, reason: match.reason, source: f.kind }); continue; }
       const cat = BY_SKU[match.sku];
       const uom = cell('uom').toUpperCase();
-      if (f.kind !== 'sell-through' && uom && !cat.uoms.includes(uom)) { out.rejected.push({ ...at, item, reason: `Unit ${uom} does not fit this product` }); continue; }
+      if (f.kind !== 'sell-through' && uom && !cat.uoms.includes(uom)) { reject(`Unit ${uom} does not fit this product`, 'unit', date); continue; }
       const qty = isCredit ? -Math.abs(q.qty) : q.qty;
-      if (!key) key = `${isCredit ? 'credit' : 'invoice'}|${doc}|${date}|${account}|${match.sku}|${qty}`;
+      // Partner lines are identified by document, account, product and their rank in the file, never by quantity:
+      // a corrected re-send replaces the earlier line, and two real identical lines on one invoice both count.
+      let lineKey = null;
+      if (!key) {
+        const base = `${isCredit ? 'credit' : 'invoice'}|${doc}|${account}|${match.sku}`;
+        occ.set(base, (occ.get(base) || 0) + 1);
+        lineKey = `${base}|${occ.get(base)}`; key = lineKey;
+      }
       out.records.push({ ...at, key, doc, date, account, sku: match.sku, qty, kind: isCredit ? 'credit' : f.kind === 'sell-through' ? 'sale' : 'invoice', ref: cell('ref') || null, market: f.market, fileKind: f.kind, matchedBy: match.by, cells: cols.map((c) => r[c] ?? '') });
     }
   }
@@ -185,16 +195,23 @@ export function buildDataset(fileIds, files = FILES) {
   const ds = { files: [], records: [], receipts: [], held: [], rejected: [] };
   for (const id of fileIds) {
     if (done.has(id)) {
-      ds.receipts.push({ file: id, name: files[id].name, already: true, rowsRead: 0, counted: 0, credits: 0, duplicates: [], rejected: [], held: [], dropped: [] });
+      ds.receipts.push({ file: id, name: files[id].name, already: true, rowsRead: 0, counted: 0, credits: 0, duplicates: [], replaced: [], rejected: [], held: [], dropped: [] });
       continue;
     }
     done.add(id);
     const f = ingestFile(id, files);
     ds.files.push(f); ds.held.push(...f.held); ds.rejected.push(...f.rejected);
-    const rc = { file: id, name: f.name, already: false, rowsRead: f.rowsRead, counted: 0, credits: 0, duplicates: [], rejected: f.rejected, held: f.held, dropped: f.dropped };
+    const rc = { file: id, name: f.name, already: false, rowsRead: f.rowsRead, counted: 0, credits: 0, duplicates: [], replaced: [], rejected: f.rejected, held: f.held, dropped: f.dropped };
     for (const r of f.records) {
-      if (seen.has(r.key)) { rc.duplicates.push({ file: r.file, tab: r.tab, row: r.row, doc: r.doc, account: r.account, market: r.market, first: seen.get(r.key) }); continue; }
-      seen.set(r.key, { file: r.file, tab: r.tab, row: r.row });
+      if (seen.has(r.key)) {
+        const prev = seen.get(r.key);
+        const first = { file: prev.file, tab: prev.tab, row: prev.row };
+        if (prev.qty === r.qty) { rc.duplicates.push({ file: r.file, tab: r.tab, row: r.row, doc: r.doc, account: r.account, market: r.market, first }); continue; }
+        ds.records[ds.records.indexOf(prev)] = r; seen.set(r.key, r);
+        rc.replaced.push({ file: r.file, tab: r.tab, row: r.row, doc: r.doc, account: r.account, market: r.market, from: prev.qty, to: r.qty, first });
+        continue;
+      }
+      seen.set(r.key, r);
       ds.records.push(r);
       if (r.kind === 'credit') rc.credits++; else rc.counted++;
     }
@@ -221,7 +238,13 @@ export function weekSummary(ds, market, sku, week) {
   const missing = days.filter((d) => !covered.has(d));
   const rows = ds.records.filter((r) => r.market === market && r.fileKind === 'sell-in' && r.sku === sku && inRange(r.date, week));
   const strain = BY_SKU[sku].strain;
-  const risk = ds.held.filter((h) => h.source === 'sell-in' && files_market(ds, h.file) === market && h.strain === strain && (!h.date || inRange(h.date, week)));
+  const inWeek = (x) => !x.date || inRange(x.date, week);
+  const held = ds.held.filter((h) => h.source === 'sell-in' && files_market(ds, h.file) === market && h.strain === strain && inWeek(h))
+    .map((h) => ({ ...h, issue: 'format' }));
+  // A rejected partner line that names this product (or this strain without a clear product) could change the total.
+  const bad = ds.rejected.filter((x) => x.source === 'sell-in' && files_market(ds, x.file) === market && x.issue !== 'product'
+    && (x.sku === sku || (!x.sku && x.strain === strain)) && inWeek(x));
+  const risk = [...held, ...bad];
   const boxes = rows.reduce((a, r) => a + r.qty, 0);
   const status = missing.length ? 'pending' : risk.length ? 'provisional' : 'ready';
   const byDay = days.map((d) => ({
@@ -231,11 +254,11 @@ export function weekSummary(ds, market, sku, week) {
   }));
   const byAccount = {};
   for (const r of rows) byAccount[r.account] = (byAccount[r.account] || 0) + r.qty;
-  return { market, sku, week, boxes, status, missing, covered: days.filter((d) => covered.has(d)), byDay, byAccount, risk, rows };
+  return { market, sku, week, boxes, status, missing, issues: risk.map((x) => ({ file: x.file, tab: x.tab, row: x.row, doc: x.doc, account: x.account, item: x.item, issue: x.issue, reason: x.reason })), covered: days.filter((d) => covered.has(d)), byDay, byAccount, risk, rows };
 }
 function files_market(ds, fileId) { const f = ds.files.find((x) => x.id === fileId); return f && f.market; }
 
-const round1 = (x) => Math.round(x * 10) / 10;
+const round1 = (x) => (Math.sign(x) * Math.round(Math.abs(x) * 10)) / 10 + 0;
 export function marketFigure(ds, market, sku = FOCUS_SKU) {
   const cur = weekSummary(ds, market, sku, REVIEW.week);
   const prev = weekSummary(ds, market, sku, REVIEW.prev);
@@ -245,11 +268,25 @@ export function marketFigure(ds, market, sku = FOCUS_SKU) {
       const qty = cur.byAccount[code] || 0; const prevQty = prev.byAccount[code] || 0;
       return { code, qty, prevQty, changePct: changePct !== null && prevQty > 0 ? round1(((qty - prevQty) / prevQty) * 100) : null };
     });
-  return { market, name: MARKETS[market], sku, label: skuLabel(sku), units: BY_SKU[sku].units, status: cur.status, qty: cur.boxes, prevQty: prev.boxes, prevStatus: prev.status, changePct, missing: cur.missing, covered: cur.covered, byDay: cur.byDay, accounts, risk: cur.risk.length };
+  return { market, name: MARKETS[market], sku, label: skuLabel(sku), units: BY_SKU[sku].units, status: cur.status, qty: cur.boxes, prevQty: prev.boxes, prevStatus: prev.status, changePct, missing: cur.missing, covered: cur.covered, byDay: cur.byDay, accounts, risk: cur.risk.length, issues: cur.issues, issueText: issueText(cur.covered.length, cur.issues) };
+}
+
+const ISSUE_WORDS = {
+  qty: ['invoice needs a quantity', 'invoices need a quantity'],
+  unit: ['invoice has a unit that does not fit', 'invoices have a unit that does not fit'],
+  date: ['invoice has an unreadable date', 'invoices have an unreadable date'],
+  format: ['line needs a format', 'lines need a format'],
+};
+export function issueText(coveredDays, issues) {
+  if (!issues.length) return null;
+  const counts = {};
+  for (const i of issues) counts[i.issue] = (counts[i.issue] || 0) + 1;
+  const parts = Object.entries(counts).map(([k, c]) => `${c} ${(ISSUE_WORDS[k] || ['line needs a check', 'lines need a check'])[c === 1 ? 0 : 1]}`);
+  return `${coveredDays} days covered · ${parts.join(', ')}`;
 }
 
 export function getRole(roleId) {
-  const r = ROLES[roleId];
+  const r = own(ROLES, roleId) ? ROLES[roleId] : null;
   if (!r) throw new HttpError(400, 'no_role', 'Choose a simulated role: leadership or mi-sales.');
   return r;
 }
@@ -265,7 +302,7 @@ export function scopedDataset(role, extras = []) {
 }
 
 export function fileCoverage(ds) {
-  const LABELS = { 'mi-partner': 'Michigan partner workbook', 'mi-pos-022': 'Till export from retailer MI-022', 'mi-panel': 'Michigan market panel extract', 'oh-partner': 'Ohio partner workbook' };
+  const LABELS = { 'mi-partner': 'Michigan partner workbook', 'mi-pos-022': 'POS export from retailer MI-022', 'mi-panel': 'Michigan market panel extract', 'oh-partner': 'Ohio partner workbook' };
   const bySource = {};
   for (const f of ds.files) {
     const end = f.coverage ? f.coverage.end : null;
@@ -275,14 +312,16 @@ export function fileCoverage(ds) {
   return Object.values(bySource).map((s) => {
     const expected = s.kind === 'panel' ? REVIEW.prev.end : REVIEW.week.end;
     const behind = s.through ? Math.max(0, Math.round((Date.parse(expected) - Date.parse(s.through)) / 86400000)) : null;
-    return { ...s, expected, daysBehind: behind, status: behind ? 'late' : 'on time', lagNote: s.kind === 'panel' ? 'Arrives a week after the period by design' : null };
+    const missing = behind ? daysOf(new Date(Date.parse(s.through) + 86400000).toISOString().slice(0, 10), expected) : [];
+    const span = missing.length > 1 ? `${dayLabel(missing[0]).slice(0, 3)}-${dayLabel(missing[missing.length - 1]).slice(0, 3)}` : missing.length ? dayLabel(missing[0]).slice(0, 3) : '';
+    return { ...s, expected, daysBehind: behind, status: behind ? 'missing' : 'complete', statusText: behind ? `${span} missing` : 'Coverage complete', lagNote: s.kind === 'panel' ? 'Covers the week before, by design' : null };
   });
 }
 
 function marketView(ds, market) {
   const focus = marketFigure(ds, market);
   const products = CATALOG.filter((c) => ds.records.some((r) => r.market === market && r.sku === c.sku && r.fileKind === 'sell-in'))
-    .map((c) => { const m = marketFigure(ds, market, c.sku); return { sku: c.sku, label: m.label, units: c.units, qty: m.qty, status: m.status }; });
+    .map((c) => { const m = marketFigure(ds, market, c.sku); return { sku: c.sku, label: m.label, units: c.units, qty: m.qty, status: m.status, issues: m.issues, issueText: m.issueText }; });
   const tills = ds.files.filter((f) => f.market === market && f.kind === 'sell-through').map((f) => ({
     file: f.id, name: f.name, account: FILES[f.id].account,
     qty: ds.records.filter((r) => r.file === f.id && r.sku === FOCUS_SKU && inRange(r.date, REVIEW.week)).reduce((a, r) => a + r.qty, 0),
@@ -314,8 +353,11 @@ const ref = (ds, file, tab, row) => ({ file, name: ds.files.find((f) => f.id ===
 export function accountFor(roleId, code, extras = []) {
   const role = getRole(roleId);
   const ds = scopedDataset(role, extras);
+  // The market is read from the code prefix, so a refusal never depends on whether an outside account exists.
+  const prefix = String(code).split('-')[0];
+  if (!role.markets.includes(prefix)) throw forbidden();
   const rows = ds.records.filter((r) => r.account === code && r.fileKind === 'sell-in');
-  if (!rows.length) throw forbidden();
+  if (!rows.length) throw new HttpError(404, 'not_found', 'No such account in this sample.');
   const market = rows[0].market;
   const fig = marketFigure(ds, market);
   const acc = fig.accounts.find((a) => a.code === code) || { qty: 0, prevQty: 0 };
@@ -324,17 +366,19 @@ export function accountFor(roleId, code, extras = []) {
     .map((r) => ({ ...ref(ds, r.file, r.tab, r.row), doc: r.doc, date: r.date, dateLabel: dayLabel(r.date), qty: r.qty, kind: r.kind, week: inRange(r.date, REVIEW.week) ? 'this' : 'prev' }));
   const skipped = ds.receipts.flatMap((rc) => rc.duplicates).filter((d) => d.account === code)
     .map((d) => ({ ...ref(ds, d.file, d.tab, d.row), doc: d.doc, first: ref(ds, d.first.file, d.first.tab, d.first.row) }));
-  return { code, market, marketName: MARKETS[market], label: fig.label, status: fig.status, qty: acc.qty, prevQty: acc.prevQty, rows: focus, skipped };
+  const replaced = ds.receipts.flatMap((rc) => rc.replaced).filter((d) => d.account === code)
+    .map((d) => ({ ...ref(ds, d.file, d.tab, d.row), doc: d.doc, from: d.from, to: d.to, first: ref(ds, d.first.file, d.first.tab, d.first.row) }));
+  return { code, market, marketName: MARKETS[market], label: fig.label, units: fig.units, status: fig.status, qty: acc.qty, prevQty: acc.prevQty, rows: focus, skipped, replaced };
 }
 
 export function rowFor(roleId, fileId, tab, rowNum, extras = []) {
   const role = getRole(roleId);
-  if (!FILES[fileId]) throw new HttpError(404, 'not_found', 'No such file.');
+  if (!own(FILES, fileId)) throw new HttpError(404, 'not_found', 'No such file.');
   if (!role.markets.includes(FILES[fileId].market)) throw forbidden();
   const ds = scopedDataset(role, extras);
   const f = ds.files.find((x) => x.id === fileId);
   if (!f) throw new HttpError(404, 'not_imported', 'This file has not been added yet.');
-  const sheet = FILES[fileId].sheets[tab];
+  const sheet = own(FILES[fileId].sheets, tab) ? FILES[fileId].sheets[tab] : null;
   const n = Number(rowNum);
   if (!sheet || !Number.isInteger(n) || n < 1 || n > sheet.length) throw new HttpError(404, 'not_found', 'No such row.');
   const head = f.headers[tab];
@@ -356,6 +400,8 @@ function rowOutcome(ds, f, tab, n) {
     const what = rec.kind === 'credit' ? `Netted as ${rec.qty} ${c.units}` : rec.kind === 'sale' ? `Counted as sell-through: ${rec.qty} ${c.units}` : `Counted: ${rec.qty} ${c.units}`;
     return `${what} for ${rec.account}, matched to ${skuLabel(rec.sku)} by ${rec.matchedBy}.`;
   }
+  const rep = ds.receipts.flatMap((r) => r.replaced).find(at);
+  if (rep) return `Corrected re-send: replaces the line from ${ds.files.find((x) => x.id === rep.first.file).name}, row ${rep.first.row} (${rep.from} became ${rep.to}).`;
   const dup = ds.receipts.flatMap((r) => r.duplicates).find(at);
   if (dup) return `Skipped: the same line was already counted from ${ds.files.find((x) => x.id === dup.first.file).name}, row ${dup.first.row}.`;
   const rej = ds.rejected.find(at);

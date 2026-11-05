@@ -25,4 +25,4 @@ node --test tests/*.test.js
 ```
 
 GitHub Actions runs the same command on every push. Deployment is done from a separate machine; this repository
-holds no deploy key or other secret.
+holds no deploy key or other secret. The deploy is done by hand after the run is green; it is not gated by GitHub.
