@@ -20,6 +20,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const n = (x) => Number(x).toLocaleString('en-US');
 const pct = (x) => (x === null || x === undefined ? null : `${x > 0 ? '+' : x < 0 ? '-' : ''}${Math.abs(x).toFixed(1)}%`);
 const dow = (label) => label.slice(0, 3);
+const nb = (t) => String(t).replace(/-/g, '\u2011'); // keeps "Fri-Sun" and "five-packs" on one line
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const UNIT_LONG = { 'five-packs': 'five-packs shipped to retail accounts, net of credits' };
 
@@ -71,15 +72,15 @@ function renderFocus(f) {
   document.querySelector('.figure').classList.toggle('is-pending', !ready);
   animateCount(f.qty);
   const last = f.covered.length ? f.byDay.find((x) => x.date === f.covered[f.covered.length - 1]).label : '';
-  const unit = UNIT_LONG[f.units] || f.units;
+  const unit = nb(UNIT_LONG[f.units] || f.units).replace(/\u2011packs shipped/, '\u2011packs shipped');
   $('count-cap').textContent = f.missing.length ? `${unit}, through ${last}` : `${unit}, full week`;
   $('verdict-issues').innerHTML = '';
   if (f.status === 'pending') {
     const miss = f.byDay.filter((x) => !x.covered);
     const span = miss.length > 1 ? `${dow(miss[0].label)}-${dow(miss[miss.length - 1].label)}` : dow(miss[0].label);
     $('verdict-word').textContent = 'Not yet.';
-    $('verdict-status').textContent = `Weekly change pending · ${span} missing`;
-    $('verdict-why').textContent = `${f.covered.length} of 7 days are in. Last week closed at ${n(f.prevQty)} ${f.units}, and a change now would compare part of a week with a whole one.`;
+    $('verdict-status').textContent = `Weekly change pending · ${nb(span)} missing`;
+    $('verdict-why').textContent = `${f.covered.length} of 7 days are in. Last week closed at ${n(f.prevQty)} ${nb(f.units)}, and a change now would compare part of a week with a whole one.`;
   } else if (f.status === 'provisional') {
     $('verdict-word').textContent = 'Not yet.';
     $('verdict-status').textContent = f.issueText;
@@ -87,7 +88,7 @@ function renderFocus(f) {
     $('verdict-issues').innerHTML = `<ul class="issues">${f.issues.map((i) => `<li>${rowLink(i, `${i.doc || 'Row'}, ${i.tab} row ${i.row}`)}: ${esc(i.reason)}${i.account ? ` (${esc(i.account)})` : ''}</li>`).join('')}</ul>`;
   } else {
     $('verdict-word').textContent = 'Yes.';
-    $('verdict-status').textContent = `The week is closed: ${n(f.qty)} ${f.units}, ${pct(f.changePct)} on last week's ${n(f.prevQty)}.`;
+    $('verdict-status').textContent = `The week is closed: ${n(f.qty)} ${nb(f.units)}, ${pct(f.changePct)} on last week's ${n(f.prevQty)}.`;
     $('verdict-why').textContent = `Every day from ${f.byDay[0].label} to ${f.byDay[6].label} is declared by a partner file, and no partner line is left open.`;
   }
   const btn = $('load');
