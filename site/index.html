@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Monday sales check</title>
+<meta name="description" content="A sample sales portal: one Michigan weekly figure, the partner file that completes it, and roles that hold on every door. Public catalog, fictional accounts and sales.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<p class="buildnote">Sample build for Rove's sales team by Frederic de Lavenne de Choulot (The AI Pipe). Not connected to any Rove system.</p>
+
+<header class="portal">
+  <div class="portal-in">
+    <div class="portal-name">Sales portal</div>
+    <nav class="portal-tools" aria-label="Tools">
+      <a href="#monday" aria-current="page">Monday check</a>
+      <a href="#coverage">File coverage</a>
+    </nav>
+    <div class="role" role="group" aria-labelledby="role-label">
+      <span id="role-label" class="role-label">Viewing as</span>
+      <div class="role-switch">
+        <button type="button" data-role="leadership">Leadership</button>
+        <button type="button" data-role="mi-sales">Michigan sales</button>
+      </div>
+      <span class="role-note">Simulated role, no sign-in</span>
+    </div>
+  </div>
+  <p class="fiction">Public Rove catalog · Fictional accounts and sales</p>
+</header>
+
+<main>
+<section id="monday" class="monday" aria-labelledby="q">
+  <p class="context" id="context">Monday review, Nov 2, 2026</p>
+  <h1 id="q">Can I use the Michigan number in Monday's review?</h1>
+  <p class="product" id="product"></p>
+
+  <div class="figure">
+    <div class="count">
+      <span class="count-num" id="count">0</span>
+      <span class="count-cap" id="count-cap"></span>
+    </div>
+    <div class="verdict" aria-live="polite">
+      <p class="verdict-word" id="verdict-word"></p>
+      <p class="verdict-status" id="verdict-status"></p>
+      <p class="verdict-why" id="verdict-why"></p>
+      <div class="load">
+        <button type="button" class="btn-load" id="load">Load sample partner file</button>
+        <p class="load-file" id="load-file">MI_partner_weekly_2026-11-01.xlsx, Fri to Sun. <a href="files/MI_partner_weekly_2026-11-01.xlsx" download>Open it in Excel</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="rail-wrap">
+    <div class="rail" id="rail" role="img" aria-label=""></div>
+    <div class="files-row" id="files-row" aria-label="Which file declares which days"></div>
+  </div>
+  <div class="receipt" id="receipt" aria-live="polite" hidden></div>
+
+  <div class="below">
+    <div class="accounts">
+      <h2>By account</h2>
+      <p class="aside">Fictional coded accounts. Select one to see the rows behind it.</p>
+      <table class="acct-table">
+        <thead><tr><th scope="col">Account</th><th scope="col" class="num">This week</th><th scope="col" class="num">Last week</th><th scope="col" class="num">Change</th></tr></thead>
+        <tbody id="acct-rows"></tbody>
+      </table>
+      <h3>Same partner files, other products</h3>
+      <ul class="plain" id="products"></ul>
+      <h3>Kept apart from this figure</h3>
+      <ul class="plain" id="apart"></ul>
+    </div>
+    <div class="ask">
+      <h2>Ask about this number</h2>
+      <p class="aside">Questions are fixed. Each answer was prepared offline for this sample and every figure in it is written by the pipeline.</p>
+      <div id="questions"></div>
+      <div id="answer" aria-live="polite"></div>
+    </div>
+  </div>
+</section>
+
+<section id="ohio" class="ohio" aria-labelledby="ohio-h">
+  <h2 id="ohio-h">Ohio, as each role sees it</h2>
+  <div id="ohio-body"></div>
+</section>
+
+<section id="coverage" class="ship" aria-labelledby="ship-h">
+  <h2 id="ship-h">A second tool, shipped the same way</h2>
+  <p class="lede">File coverage lists which source files are late for the Monday review. It was written with Claude Code and reached this portal through the gate every tool goes through.</p>
+  <div class="tool">
+    <div class="tool-head"><span class="tool-name">File coverage</span><span class="tool-for" id="tool-for"></span></div>
+    <table class="cov-table">
+      <thead><tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">Covers through</th><th scope="col">Expected for Monday</th><th scope="col">Status</th></tr></thead>
+      <tbody id="cov-rows"></tbody>
+    </table>
+  </div>
+  <ol class="chain">
+    <li><strong>Written with Claude Code</strong> in a public repository: <a href="https://github.com/fred1433/monday-sales-check" id="link-repo">fred1433/monday-sales-check</a>.</li>
+    <li><strong>Committed</strong> as <a href="#" id="link-commit">commit</a>.</li>
+    <li><strong>Tested in GitHub Actions</strong>: <span id="test-count">the full suite</span>, including the check that a Michigan session gets nothing from Ohio through the page, an answer, an export or a direct request. <a href="#" id="link-run">See the passing run</a>.</li>
+    <li><strong>Deployed</strong> from a separate machine that holds the keys. GitHub holds no secret for this site.</li>
+  </ol>
+  <details class="how">
+    <summary>How this would run at Rove</summary>
+    <div class="how-body">
+      <p>People sign in with their Rove Google Workspace account. The portal runs on Cloud Run behind Identity-Aware Proxy, so nobody outside Workspace reaches it.</p>
+      <p>Partner workbooks and till exports land in a Cloud Storage bucket. The same pipeline you used above loads them into BigQuery, with customer fields dropped before the load.</p>
+      <p>Each role reads BigQuery views with row-level access: Michigan sales reads Michigan rows. Claude agents reach the data through an MCP tool that only reads those views.</p>
+      <p>The decision to settle first is which identity runs the query. It should be the person asking, or a service account limited to that role. A shared account with every right does not become Michigan because the screen says Michigan.</p>
+      <p>Questions that change the design before a pilot: who sends each export, who may see its detail, and what each source's contract allows, including use with a model provider.</p>
+      <p>This sample proves the behavior above on fictional data, with tests. Workspace sign-in, IAM and your Google Cloud project come with the pilot. Milestones: one market's files end to end, then the portal with sign-in and roles, then the reporting agent, then the next tools.</p>
+    </div>
+  </details>
+</section>
+</main>
+
+<footer class="foot">
+  <p><strong>Public Rove catalog · Fictional accounts and sales.</strong> Product lines and formats come from rovebrand.com (home page and the Ice Packs Blunt page), read Nov 5, 2026. Every account, quantity, invoice and file here is invented, and so is the presence of a product in a given state's file. Rove lists 16 US states on <a href="https://rovebrand.com/pages/company">rovebrand.com/pages/company</a> (read Nov 5, 2026) and announced its Ontario launch on Sept. 30, 2026. This sample uses two of those states.</p>
+  <p>Built by Frederic de Lavenne de Choulot, The AI Pipe. The answers were prepared offline; the page makes no AI call.</p>
+  <p class="cal"><a href="https://cal.theaipipe.com">Book 15 minutes to walk through it</a></p>
+</footer>
+
+<dialog id="drawer" aria-labelledby="drawer-title">
+  <div class="drawer-in">
+    <button type="button" class="drawer-close" id="drawer-close" aria-label="Close">Close</button>
+    <div id="drawer-body"></div>
+  </div>
+</dialog>
+<script src="app.js" type="module"></script>
+</body>
+</html>
